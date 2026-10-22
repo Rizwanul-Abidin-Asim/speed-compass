@@ -1,0 +1,7 @@
+streamlit>=1.66
+plotly>=7.1
+anthropic>=1.16
+numpy>=2.0
+pandas>=2.0
+segno>=1.6
+google-genai>=2.32

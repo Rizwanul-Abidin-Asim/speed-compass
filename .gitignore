@@ -1,0 +1,13 @@
+# Only the app and its model are published. Submission documents stay private.
+/*
+!/prototype/
+!/model/
+!/.streamlit/
+!/requirements.txt
+!/.gitignore
+!/README.md
+/model/out/
+**/__pycache__/
+**/*.pyc
+.streamlit/secrets.toml
+prototype/.streamlit/secrets.toml
