@@ -506,9 +506,9 @@ if claude.configured():
         if claude.provider == "gemini" and st.query_params.get("diag") == "1":
             from google import genai as _g
             try:
-                st.caption(", ".join(sorted(m.name.split("/")[-1] for m in
-                                            _g.Client(api_key=claude.api_key).models.list(config={"page_size": 200})
-                                            if "gemini" in m.name)))
+                _client = _g.Client(api_key=claude.api_key)
+                _names = [m.name.split("/")[-1] for m in _client.models.list(config={"page_size": 200})]
+                st.caption(", ".join(sorted(n for n in _names if "gemini" in n)))
             except Exception as _e:
                 st.caption(f"list failed: {type(_e).__name__} {getattr(_e, 'code', '')} {str(_e)[:300]}")
         if claude.provider == "gemini" and LAST_TRACE:
