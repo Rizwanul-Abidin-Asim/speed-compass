@@ -10,15 +10,17 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]  # most accurate first; Lite has more free room
+# Most accurate first. The newest models are often overloaded on the free tier (they fail fast with 503), so the
+# chain falls back to older Flash models, then Lite.
+GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3-flash-preview", "gemini-3.5-flash-lite"]
 CLAUDE_MODEL = "claude-opus-5-5"
 CLAUDE_FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 _CACHE, _LOCK = {}, threading.Lock()
 _BUSY_UNTIL = {}  # model -> time until which we skip it after a free-tier limit (shared by all judges)
 BUSY_SECONDS = 60
-GEMINI_TIMEOUT_S = 14  # longest wait for the first model, leaving time for the lighter one
-GEMINI_BUDGET_S = 25  # longest wait for one request, across both models
+GEMINI_TIMEOUT_S = 10  # longest wait for one model, leaving time for the next one
+GEMINI_BUDGET_S = 25  # longest wait for one request, across all models
 _POOL = ThreadPoolExecutor(max_workers=16)  # runs model calls so the wait can be capped on the wall clock
 LAST_TRACE = []  # (model, outcome, seconds) for the latest Gemini request, shown under the AI settings
 

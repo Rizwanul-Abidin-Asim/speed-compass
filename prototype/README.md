@@ -31,9 +31,11 @@ once is fine on a normal laptop.
 Pick the provider in the sidebar and paste a key, or set `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`) before starting.
 The model then tags searches, writes the memo and answers questions in English or Arabic.
 
-- **Gemini (free tier):** get a key at aistudio.google.com. The app uses `gemini-3.8-flash` (most accurate) and
-  switches to `gemini-3.5-flash-lite` when the free limit is reached. Use a project without billing so it can never
-  cost money.
+- **Gemini (free tier):** get a key at aistudio.google.com. The app tries `gemini-3.8-flash` first, then
+  `gemini-3.6-flash`, `gemini-3-flash-preview` and `gemini-3.5-flash-lite` when a model is overloaded or at its free
+  limit. Use a project without billing so it can never cost money.
+- Every AI request stops after 25 seconds at most; the app then answers with the offline rules. The sidebar's
+  **Check the AI connection** sends a one-word test and shows which models answered.
 - **Claude:** `claude-opus-5-5`, with server-side refusal fallback enabled. Paid per use.
 - Identical requests are answered once and shared, so 8 judges clicking the same example use one API call.
 - If the model is unavailable or busy, the app says so and uses the offline rules.

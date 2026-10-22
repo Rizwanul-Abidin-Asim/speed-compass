@@ -503,33 +503,6 @@ if claude.configured():
                 st.success(f"{claude.label} answered in {time.time() - t0:.1f} seconds.")
             except AIUnavailable as e:
                 st.warning(f"{e} ({time.time() - t0:.1f} seconds). The app is using offline rules for now.")
-        if claude.provider == "gemini" and st.query_params.get("diag") == "1":
-            from google import genai as _g
-            try:
-                _client = _g.Client(api_key=claude.api_key)
-                _names = [m.name.split("/")[-1] for m in _client.models.list(config={"page_size": 200})]
-                from concurrent.futures import ThreadPoolExecutor as _TP
-                from google.genai import types as _t
-
-                def _probe(m):
-                    t0 = time.time()
-                    think = (_t.ThinkingConfig(thinking_budget=0) if m.startswith("gemini-2.5-flash") else
-                             _t.ThinkingConfig(thinking_level="low"))
-                    try:
-                        r = _client.models.generate_content(model=m, contents="Reply with the single word OK.",
-                                                            config=_t.GenerateContentConfig(max_output_tokens=50,
-                                                                                            thinking_config=think))
-                        return f"{m}: {r.text!r} {time.time() - t0:.1f}s"
-                    except Exception as e:
-                        return f"{m}: {type(e).__name__} {getattr(e, 'code', '')} {time.time() - t0:.1f}s"
-                _cands = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash",
-                          "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-3.5-flash-lite",
-                          "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-flash-latest"]
-                with _TP(10) as _ex:
-                    for _line in _ex.map(_probe, _cands):
-                        st.caption(_line)
-            except Exception as _e:
-                st.caption(f"list failed: {type(_e).__name__} {getattr(_e, 'code', '')} {str(_e)[:300]}")
         if claude.provider == "gemini" and LAST_TRACE:
             st.caption("Last request: " + "; ".join(f"{m}: {what}, {sec:.1f} s" for m, what, sec in LAST_TRACE))
 S = settings()
