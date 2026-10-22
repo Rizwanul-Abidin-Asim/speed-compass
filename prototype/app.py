@@ -14,7 +14,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from compass import bridge, content, cutoff, memo, urgency
+from compass import bridge, content, cutoff, memo, tour, urgency
 from compass.ai import LAST_TRACE, AIUnavailable, Claude
 
 st.set_page_config(page_title="Speed Compass", page_icon=":material/explore:", layout="wide",
@@ -194,11 +194,6 @@ html, body, .stApp, .stMarkdown, p, li, label, input, textarea, button, [data-te
 .sc-ai.off { background:#e6f0fd; color:#1d5fbf; }
 .sc-aiwhy { font-size:12.5px; color:#7c2d12; background:#fff4ec; border:1px solid #fbd5bd; border-radius:10px;
   padding:7px 10px; margin:2px 0 10px; line-height:1.45; }
-.sc-guide { display:flex; flex-direction:column; gap:9px; }
-.sc-step { display:flex; gap:11px; align-items:flex-start; font-size:14px; color:var(--ink); line-height:1.45; }
-.sc-step .n { flex:none; width:24px; height:24px; border-radius:50%; background:var(--dusk); color:#fff;
-  font-size:12.5px; font-weight:700; display:flex; align-items:center; justify-content:center; margin-top:1px; }
-.sc-step .d { color:var(--ink2); font-size:13px; }
 .sc-tw { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .sc-tw .sc-t { min-width:560px; }
 
@@ -538,21 +533,7 @@ st.markdown(f"""
   </div>
 </div>""", unsafe_allow_html=True)
 
-# ------------------------------------------------------------------ walkthrough
-GUIDE = [
-    ("Plan", "Start here. Each zone card shows the promise Speed Compass sets (Today, Tomorrow or no change), what "
-             "it costs and the extra sales it brings. The tiles below give the UAE totals."),
-    ("Assumptions", "Move any slider in the sidebar and every number updates. On a phone, tap the &raquo; arrow at "
-                    "the top left to open it."),
-    ("12 PM test", "Press Run. It simulates the cut-off test and shows it finds the planted answer. Then press "
-                   "Use these results to feed the measured rates into the plan."),
-    ("Urgency tagger &#10022; AI", "Type or pick a search in English or Arabic. The AI labels it urgent or planned. "
-                                   "Tag all 30 to estimate the urgent share of orders."),
-    ("Rival watch", "Pick a rival move, such as noon Minutes opening in a new emirate. The table shows whether "
-                    "matching it pays."),
-    ("Memo and questions &#10022; AI", "The AI writes this month's memo from the plan, and answers what-if "
-                                       "questions such as \"What if fuel costs rise 20% in Al Ain?\""),
-]
+# ------------------------------------------------------------------ guided tour and AI note
 AI_USES = (
     "<b>AI is used in two tabs only, for language jobs. It never sets a number.</b>"
     "<ul style='margin:6px 0 0 18px;padding:0'>"
@@ -579,29 +560,14 @@ def ai_uses():
     return AI_USES.format(engine=engine)
 
 
-def guide_html():
-    steps = "".join(f'<div class="sc-step"><span class="n">{i}</span><div><b>{t}</b><br><span class="d">{d}</span>'
-                    f'</div></div>' for i, (t, d) in enumerate(GUIDE, 1))
-    return f'<div class="sc-guide">{steps}</div>'
+def replay_tour():
+    ss.tour_run += 1
 
 
-@st.dialog("Welcome to Speed Compass", width="large")
-def welcome():
-    st.markdown('<div class="sc-sub" style="font-size:14px">It decides, zone by zone, where faster delivery pays. '
-                'Six things to try, about two minutes in all:</div>', unsafe_allow_html=True)
-    st.markdown(guide_html(), unsafe_allow_html=True)
-    st.markdown(f'<div class="sc-aiwhy" style="margin-top:12px">{ai_uses()}</div>', unsafe_allow_html=True)
-    if st.button("Got it, show me the plan", type="primary", width="stretch"):
-        st.rerun()
-
-
-if not ss.get("welcomed"):
-    ss.welcomed = True
-    welcome()
-
-g1, g2 = st.columns(2)
-with g1.expander("How to use this app", icon=":material/help:"):
-    st.markdown(guide_html(), unsafe_allow_html=True)
+if "tour_run" not in ss:
+    ss.tour_run = 1  # the tour starts by itself on a person's first visit
+g1, g2 = st.columns([1, 2.2])
+g1.button("Take the tour", key="tour_btn", icon=":material/tour:", on_click=replay_tour, width="stretch")
 with g2.expander("Where the AI is used, and why", icon=":material/auto_awesome:"):
     st.markdown(f'<div style="font-size:13.5px;line-height:1.5">{ai_uses()}</div>', unsafe_allow_html=True)
 
@@ -976,11 +942,12 @@ with tab_rival:
         for col, n in zip(cols, bridge.ZONE_NAMES):
             col.selectbox(LABEL[n], bridge.RIVAL_LEVELS, format_func=bridge.RIVAL_LABEL.get, key=f"r_{n}",
                           on_change=sync_rivals)
-        st.markdown("**Try a rival move**")
-        ev = st.columns(2)
-        for i, (label, change) in enumerate(content.RIVAL_EVENTS):
-            ev[i % 2].button(label, on_click=apply_event, args=(change,), width="stretch")
-        ev[len(content.RIVAL_EVENTS) % 2].button("Reset rivals to today", on_click=reset_rivals, width="stretch")
+        with st.container(key="rival_moves"):
+            st.markdown("**Try a rival move**")
+            ev = st.columns(2)
+            for i, (label, change) in enumerate(content.RIVAL_EVENTS):
+                ev[i % 2].button(label, on_click=apply_event, args=(change,), width="stretch")
+            ev[len(content.RIVAL_EVENTS) % 2].button("Reset rivals to today", on_click=reset_rivals, width="stretch")
     with card("rival_impact"):
         section("Does matching pay?", f"Extra sales per AED 1 on the first same-day step, against the "
                                       f"{S['ratio_min']:.1f} to 1 rule.")
@@ -1073,3 +1040,5 @@ with tab_memo:
 st.markdown('<div class="sc-foot">Prototype for Amazon Transcend 2026, Case Study 1, by <b>Rizwanul Abidin Asim</b> '
             '(American University of Sharjah). Inputs are the illustrative figures in the Supporting Document, not '
             'Amazon data. Production would run the language model on Amazon Bedrock.</div>', unsafe_allow_html=True)
+
+st.html(tour.tour_html(ss.tour_run), unsafe_allow_javascript=True)

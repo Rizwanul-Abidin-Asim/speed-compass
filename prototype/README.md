@@ -40,6 +40,10 @@ The model then tags searches, writes the memo and answers questions in English o
 - Identical requests are answered once and shared, so 8 judges clicking the same example use one API call.
 - If the model is unavailable or busy, the app says so and uses the offline rules.
 
+## Guided tour
+
+On arrival the app runs a short tour: it highlights each feature in turn (zone cards, totals, ladder, assumptions, then each tab) with Next and Back. **Take the tour** replays it. It uses driver.js 1.3.1 (MIT licence, bundled in `compass/vendor/`), so it works without internet.
+
 ## Tabs
 
 | Tab | What it shows |
