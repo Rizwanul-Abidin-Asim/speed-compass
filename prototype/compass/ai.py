@@ -8,6 +8,7 @@ import os
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite"]  # most accurate first; Lite has more free room
 CLAUDE_MODEL = "claude-opus-5-5"
@@ -16,8 +17,10 @@ CLAUDE_FALLBACK_BETA = "server-side-fallback-2026-07-01"
 _CACHE, _LOCK = {}, threading.Lock()
 _BUSY_UNTIL = {}  # model -> time until which we skip it after a free-tier limit (shared by all judges)
 BUSY_SECONDS = 60
-GEMINI_TIMEOUT_S = 20  # longest wait for one model
+GEMINI_TIMEOUT_S = 14  # longest wait for the first model, leaving time for the lighter one
 GEMINI_BUDGET_S = 25  # longest wait for one request, across both models
+_POOL = ThreadPoolExecutor(max_workers=16)  # runs model calls so the wait can be capped on the wall clock
+LAST_TRACE = []  # (model, outcome, seconds) for the latest Gemini request, shown under the AI settings
 
 
 class AIUnavailable(Exception):
@@ -46,6 +49,20 @@ def _parse_json(text):
             except json.JSONDecodeError:
                 pass
     raise AIUnavailable("The model returned malformed JSON.")
+
+
+def _status(e):
+    """HTTP status of an SDK error. The interactions API names it status_code, older calls name it code."""
+    for name in ("status_code", "code"):
+        value = getattr(e, name, None)
+        if isinstance(value, int):
+            return value
+    match = re.search(r"Error code: (\d{3})", str(e))
+    return int(match.group(1)) if match else None
+
+
+def _is_timeout(e):
+    return "timeout" in type(e).__name__.lower() or "timed out" in str(e).lower()
 
 
 def detect_provider(key):
@@ -101,63 +118,55 @@ class AI:
     # -------------------------------------------------------------- Gemini
     def _gemini(self, system, user, schema, max_tokens):
         from google import genai  # imported on first use: keeps app start fast
-        from google.genai import errors, types
+        from google.genai import types
 
-        # Hard limits: one attempt per model and 25 seconds per request in all, so a busy free tier never leaves
-        # a spinner running. After that the caller shows the offline answer.
+        # Hard limits: no SDK retries, and a wall-clock cap of 25 seconds per request across both models, so a
+        # busy free tier never leaves a spinner running. After that the caller shows the offline answer.
+        client = genai.Client(api_key=self.api_key, http_options=types.HttpOptions(
+            timeout=GEMINI_TIMEOUT_S * 1000, retry_options=types.HttpRetryOptions(attempts=0)))
         deadline = time.time() + GEMINI_BUDGET_S
-        busy = False
-        for model in GEMINI_MODELS:
-            if _BUSY_UNTIL.get(model, 0) > time.time() and model != GEMINI_MODELS[-1]:
-                busy = True
-                continue  # this model hit its free limit recently: go straight to the lighter one
-            wait = min(GEMINI_TIMEOUT_S, deadline - time.time())
-            if wait < 3:
-                busy = True
-                break
-            client = genai.Client(api_key=self.api_key, http_options=types.HttpOptions(
-                timeout=int(wait * 1000), retry_options=types.HttpRetryOptions(attempts=1)))
-            request = dict(model=model, input=user, system_instruction=system,
-                           generation_config={"thinking_level": "low", "max_output_tokens": max_tokens})
-            if schema:
-                request["response_format"] = {"type": "text", "mime_type": "application/json", "schema": schema}
-            try:
-                try:
-                    out = client.interactions.create(**request)
-                except errors.ClientError as e:
-                    if schema and getattr(e, "code", None) == 400:
-                        # schema not accepted: ask for JSON in the prompt instead and parse it ourselves
-                        request.pop("response_format")
-                        request["input"] = (f"{user}\n\nReply with JSON only, matching this JSON schema:\n"
-                                            f"{json.dumps(schema)}")
-                        out = client.interactions.create(**request)
-                    else:
-                        raise
-            except errors.ClientError as e:
-                code = getattr(e, "code", None)
-                if code == 429:
+        busy, trace = False, []
+        try:
+            for model in GEMINI_MODELS:
+                if _BUSY_UNTIL.get(model, 0) > time.time() and model != GEMINI_MODELS[-1]:
                     busy = True
-                    _BUSY_UNTIL[model] = time.time() + BUSY_SECONDS
-                    continue  # free-tier limit on this model: try the lighter one
-                if code in (401, 403) or (code == 400 and "API key" in str(e)):
-                    raise AIUnavailable("The Gemini API key was not accepted.")
-                if code == 404:
-                    continue
-                raise AIUnavailable(f"Gemini returned an error ({code}).")
-            except errors.ServerError:
-                continue
-            except errors.APIError as e:
-                raise AIUnavailable(f"Gemini returned an error ({getattr(e, 'code', '')}).")
-            except Exception as e:
-                if "timeout" in type(e).__name__.lower() or "timed out" in str(e).lower():
-                    busy = True
-                    _BUSY_UNTIL[model] = time.time() + BUSY_SECONDS
-                    continue  # too slow right now: try the lighter model
-                raise AIUnavailable("No connection to Gemini.")
-            text = getattr(out, "output_text", None) or ""
-            if not text.strip():
-                continue
-            return (_parse_json(text) if schema else clean(text)), model
+                    trace.append((model, "skipped: busy recently", 0.0))
+                    continue  # this model hit its limit recently: go straight to the lighter one
+                request = dict(model=model, input=user, system_instruction=system,
+                               generation_config={"thinking_level": "low", "max_output_tokens": max_tokens})
+                if schema:
+                    request["response_format"] = {"type": "text", "mime_type": "application/json", "schema": schema}
+                for attempt in ("schema", "plain"):
+                    wait = min(GEMINI_TIMEOUT_S, deadline - time.time())
+                    if wait < 3:
+                        busy = True
+                        trace.append((model, "skipped: out of time", 0.0))
+                        break
+                    t0 = time.time()
+                    try:
+                        out = _POOL.submit(client.interactions.create, **request).result(timeout=wait)
+                    except Exception as e:
+                        code = _status(e)
+                        trace.append((model, f"{type(e).__name__} {code or ''}".strip(), time.time() - t0))
+                        if code == 400 and schema and attempt == "schema" and "API key" not in str(e):
+                            # schema not accepted: ask for JSON in the prompt instead and parse it ourselves
+                            request.pop("response_format", None)
+                            request["input"] = (f"{user}\n\nReply with JSON only, matching this JSON schema:\n"
+                                                f"{json.dumps(schema)}")
+                            continue
+                        if code in (401, 403) or (code == 400 and "API key" in str(e)):
+                            raise AIUnavailable("The Gemini API key was not accepted.")
+                        if code == 429 or _is_timeout(e) or (code or 0) >= 500:
+                            busy = True
+                            _BUSY_UNTIL[model] = time.time() + BUSY_SECONDS
+                        break  # try the next model
+                    text = getattr(out, "output_text", None) or ""
+                    trace.append((model, "answered" if text.strip() else "empty answer", time.time() - t0))
+                    if text.strip():
+                        return (_parse_json(text) if schema else clean(text)), model
+                    break
+        finally:
+            LAST_TRACE[:] = trace
         if busy:
             raise AIUnavailable("Gemini is busy or slow right now (free tier).")
         raise AIUnavailable("Gemini did not return an answer.")

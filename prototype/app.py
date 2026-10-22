@@ -7,6 +7,7 @@ import html
 import json
 import os
 import socket
+import time
 
 import numpy as np
 import pandas as pd
@@ -14,7 +15,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from compass import bridge, content, cutoff, memo, urgency
-from compass.ai import Claude
+from compass.ai import LAST_TRACE, AIUnavailable, Claude
 
 st.set_page_config(page_title="Speed Compass", page_icon=":material/explore:", layout="wide",
                    initial_sidebar_state="auto")
@@ -493,6 +494,17 @@ with st.sidebar:
                     'API key. Keep it private, like a password.</div>', unsafe_allow_html=True)
 
 claude = Claude(ss.get("ai_provider", "gemini"), ss.get("api_key"))
+if claude.configured():
+    with st.sidebar.expander("Check the AI connection", icon=":material/network_check:"):
+        if st.button("Send a test message", width="stretch"):
+            t0 = time.time()
+            try:
+                claude.ask("Reply with the single word OK.", f"Connection test {t0:.0f}", max_tokens=200)
+                st.success(f"{claude.label} answered in {time.time() - t0:.1f} seconds.")
+            except AIUnavailable as e:
+                st.warning(f"{e} ({time.time() - t0:.1f} seconds). The app is using offline rules for now.")
+        if claude.provider == "gemini" and LAST_TRACE:
+            st.caption("Last request: " + "; ".join(f"{m}: {what}, {sec:.1f} s" for m, what, sec in LAST_TRACE))
 S = settings()
 R = cached_plan(key_of(S))
 Z = {z["zone"]: z for z in R["zones"]}
