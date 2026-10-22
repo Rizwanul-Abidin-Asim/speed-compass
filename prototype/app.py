@@ -505,8 +505,12 @@ if claude.configured():
                 st.warning(f"{e} ({time.time() - t0:.1f} seconds). The app is using offline rules for now.")
         if claude.provider == "gemini" and st.query_params.get("diag") == "1":
             from google import genai as _g
-            st.caption(", ".join(sorted(m.name.split("/")[-1] for m in _g.Client(api_key=claude.api_key).models.list()
-                                        if "flash" in m.name or "pro" in m.name)))
+            try:
+                st.caption(", ".join(sorted(m.name.split("/")[-1] for m in
+                                            _g.Client(api_key=claude.api_key).models.list(config={"page_size": 200})
+                                            if "gemini" in m.name)))
+            except Exception as _e:
+                st.caption(f"list failed: {type(_e).__name__} {getattr(_e, 'code', '')} {str(_e)[:300]}")
         if claude.provider == "gemini" and LAST_TRACE:
             st.caption("Last request: " + "; ".join(f"{m}: {what}, {sec:.1f} s" for m, what, sec in LAST_TRACE))
 S = settings()
