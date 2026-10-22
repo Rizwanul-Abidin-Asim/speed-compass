@@ -344,6 +344,23 @@ def base_layout(fig, height, **kw):
 
 # ------------------------------------------------------------------ sidebar
 st.markdown(CSS, unsafe_allow_html=True)
+def _secrets_to_env():
+    """On a hosted copy the key lives in Streamlit secrets; locally it can be an environment variable."""
+    for name in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY"):
+        if name in os.environ:
+            continue
+        try:
+            value = st.secrets.get(name)
+        except Exception:
+            value = None
+        if value:
+            os.environ[name] = value
+
+
+_secrets_to_env()
+SERVER_KEY = {"gemini": bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")),
+              "claude": bool(os.environ.get("ANTHROPIC_API_KEY"))}
+
 with st.sidebar:
     if SHARE:
         urls = lan_urls(st.get_option("server.port"))
@@ -398,28 +415,22 @@ with st.sidebar:
     side_h("AI connection (optional)", "#e07a3f")
     st.selectbox("AI provider", ["gemini", "claude"], key="ai_provider",
                  format_func={"gemini": "Google Gemini (free tier)", "claude": "Anthropic Claude"}.get)
-    st.text_input("API key", type="password", key="api_key",
-                  help="Gemini keys start with AIza, Claude keys with sk-ant-. Kept only in this browser session.")
-    st.markdown('<div class="sc-keybox"><b>What the key does.</b> It lets an AI model tag searches, write the memo '
-                'and answer questions in English or Arabic. Without a key, built-in rules do the same jobs offline, '
-                'so the demo always works.<br><br><b>Free Gemini key:</b> aistudio.google.com, then Get API key. '
-                'Keep it private, like a password.</div>', unsafe_allow_html=True)
+    _prov = ss.get("ai_provider", "gemini")
+    _name = "Gemini" if _prov == "gemini" else "Claude"
+    if SERVER_KEY[_prov]:
+        st.success(f"{_name} is connected using this app's own key. Nothing to enter: just use the AI features.",
+                   icon=":material/check_circle:")
+        with st.expander("Use a different key (optional)"):
+            st.text_input("API key", type="password", key="api_key",
+                          help="Only for this browser session. Leave empty to use the app's key.")
+    else:
+        st.text_input("API key", type="password", key="api_key",
+                      help="Gemini keys start with AIza, Claude keys with sk-ant-. Kept only in this browser session.")
+        st.markdown('<div class="sc-keybox"><b>What the key does.</b> It lets an AI model tag searches, write the '
+                    'memo and answer questions in English or Arabic. Without a key, built-in rules do the same jobs '
+                    'offline, so the demo always works.<br><br><b>Free Gemini key:</b> aistudio.google.com, then Get '
+                    'API key. Keep it private, like a password.</div>', unsafe_allow_html=True)
 
-
-def _secrets_to_env():
-    """On a hosted copy the key lives in Streamlit secrets; locally it can be an environment variable."""
-    for name in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY"):
-        if name in os.environ:
-            continue
-        try:
-            value = st.secrets.get(name)
-        except Exception:
-            value = None
-        if value:
-            os.environ[name] = value
-
-
-_secrets_to_env()
 claude = Claude(ss.get("ai_provider", "gemini"), ss.get("api_key"))
 S = settings()
 R = cached_plan(key_of(S))
