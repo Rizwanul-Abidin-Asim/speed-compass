@@ -76,6 +76,9 @@ svg.driver-overlay { z-index:999995 !important; }
 _JS = r"""
 (function () {
   const W = window, D = document;
+  if (!D.querySelector('meta[name="color-scheme"]')) {
+    const m = D.createElement("meta"); m.name = "color-scheme"; m.content = "only light"; D.head.appendChild(m);
+  }
   const RUN = __RUN__, STEPS = __STEPS__;
   if (!W.driver) {
     const css = D.createElement("style"); css.textContent = __CSS__; D.head.appendChild(css);

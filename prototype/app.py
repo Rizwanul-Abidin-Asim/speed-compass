@@ -38,6 +38,8 @@ CLOCK = ('<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><ci
 CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+Arabic:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+/* Light only: stops phone browsers (Chrome, Samsung Internet, Edge) from auto-darkening the page into odd colours */
+html, body, body * { color-scheme:only light !important; }
 :root { --ink:#0f172a; --ink2:#475569; --muted:#94a3b8; --line:#e2e8f0; --violet:#6d3fd1;
         --good:#12823b; --goodbg:#e3f6e8; --bad:#c2334d; --badbg:#fde8ec;
         --dusk:linear-gradient(115deg,#1b3b6f 0%,#6b4c9a 58%,#e07a3f 100%); }
@@ -203,7 +205,7 @@ html, body, .stApp, .stMarkdown, p, li, label, input, textarea, button, [data-te
   .sc-mast { padding:18px 16px 14px; border-radius:16px; }
   .sc-title { font-size:38px !important; }
   .sc-tag { font-size:14.5px; }
-  .sc-chips { flex-direction:row; flex-wrap:wrap; gap:6px; }
+  .sc-chips { flex-direction:row; flex-wrap:wrap; gap:6px; flex:1 1 100%; }
   .sc-chip { font-size:12px; padding:5px 10px; white-space:normal; }
   .sc-legend { font-size:12px; gap:4px 12px; }
   [role="tablist"] { flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
