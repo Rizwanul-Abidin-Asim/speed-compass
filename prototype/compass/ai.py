@@ -123,7 +123,7 @@ class AI:
         # Hard limits: no SDK retries, and a wall-clock cap of 25 seconds per request across both models, so a
         # busy free tier never leaves a spinner running. After that the caller shows the offline answer.
         client = genai.Client(api_key=self.api_key, http_options=types.HttpOptions(
-            timeout=GEMINI_TIMEOUT_S * 1000, retry_options=types.HttpRetryOptions(attempts=0)))
+            timeout=GEMINI_TIMEOUT_S * 1000, retry_options=types.HttpRetryOptions(attempts=1)))
         deadline = time.time() + GEMINI_BUDGET_S
         busy, trace = False, []
         try:
@@ -132,11 +132,13 @@ class AI:
                     busy = True
                     trace.append((model, "skipped: busy recently", 0.0))
                     continue  # this model hit its limit recently: go straight to the lighter one
-                request = dict(model=model, input=user, system_instruction=system,
-                               generation_config={"thinking_level": "low", "max_output_tokens": max_tokens})
+                config = dict(system_instruction=system, max_output_tokens=max_tokens,
+                              thinking_config=types.ThinkingConfig(thinking_level="low"))
                 if schema:
-                    request["response_format"] = {"type": "text", "mime_type": "application/json", "schema": schema}
+                    config.update(response_mime_type="application/json", response_json_schema=schema)
+                request = dict(model=model, contents=user)
                 for attempt in ("schema", "plain"):
+                    request["config"] = types.GenerateContentConfig(**config)
                     wait = min(GEMINI_TIMEOUT_S, deadline - time.time())
                     if wait < 3:
                         busy = True
@@ -144,15 +146,15 @@ class AI:
                         break
                     t0 = time.time()
                     try:
-                        out = _POOL.submit(client.interactions.create, **request).result(timeout=wait)
+                        out = _POOL.submit(client.models.generate_content, **request).result(timeout=wait)
                     except Exception as e:
                         code = _status(e)
                         trace.append((model, f"{type(e).__name__} {code or ''}".strip(), time.time() - t0))
                         if code == 400 and schema and attempt == "schema" and "API key" not in str(e):
                             # schema not accepted: ask for JSON in the prompt instead and parse it ourselves
-                            request.pop("response_format", None)
-                            request["input"] = (f"{user}\n\nReply with JSON only, matching this JSON schema:\n"
-                                                f"{json.dumps(schema)}")
+                            config.pop("response_json_schema", None)
+                            request["contents"] = (f"{user}\n\nReply with JSON only, matching this JSON schema:\n"
+                                                   f"{json.dumps(schema)}")
                             continue
                         if code in (401, 403) or (code == 400 and "API key" in str(e)):
                             raise AIUnavailable("The Gemini API key was not accepted.")
@@ -160,7 +162,10 @@ class AI:
                             busy = True
                             _BUSY_UNTIL[model] = time.time() + BUSY_SECONDS
                         break  # try the next model
-                    text = getattr(out, "output_text", None) or ""
+                    try:
+                        text = out.text or ""
+                    except ValueError:  # blocked or no candidates
+                        text = ""
                     trace.append((model, "answered" if text.strip() else "empty answer", time.time() - t0))
                     if text.strip():
                         return (_parse_json(text) if schema else clean(text)), model
