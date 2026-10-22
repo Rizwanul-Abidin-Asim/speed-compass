@@ -16,6 +16,8 @@ CLAUDE_FALLBACK_BETA = "server-side-fallback-2026-07-01"
 _CACHE, _LOCK = {}, threading.Lock()
 _BUSY_UNTIL = {}  # model -> time until which we skip it after a free-tier limit (shared by all judges)
 BUSY_SECONDS = 60
+GEMINI_TIMEOUT_S = 20  # longest wait for one model
+GEMINI_BUDGET_S = 25  # longest wait for one request, across both models
 
 
 class AIUnavailable(Exception):
@@ -99,14 +101,22 @@ class AI:
     # -------------------------------------------------------------- Gemini
     def _gemini(self, system, user, schema, max_tokens):
         from google import genai  # imported on first use: keeps app start fast
-        from google.genai import errors
+        from google.genai import errors, types
 
-        client = genai.Client(api_key=self.api_key)
+        # Hard limits: one attempt per model and 25 seconds per request in all, so a busy free tier never leaves
+        # a spinner running. After that the caller shows the offline answer.
+        deadline = time.time() + GEMINI_BUDGET_S
         busy = False
         for model in GEMINI_MODELS:
             if _BUSY_UNTIL.get(model, 0) > time.time() and model != GEMINI_MODELS[-1]:
                 busy = True
                 continue  # this model hit its free limit recently: go straight to the lighter one
+            wait = min(GEMINI_TIMEOUT_S, deadline - time.time())
+            if wait < 3:
+                busy = True
+                break
+            client = genai.Client(api_key=self.api_key, http_options=types.HttpOptions(
+                timeout=int(wait * 1000), retry_options=types.HttpRetryOptions(attempts=1)))
             request = dict(model=model, input=user, system_instruction=system,
                            generation_config={"thinking_level": "low", "max_output_tokens": max_tokens})
             if schema:
@@ -138,14 +148,18 @@ class AI:
                 continue
             except errors.APIError as e:
                 raise AIUnavailable(f"Gemini returned an error ({getattr(e, 'code', '')}).")
-            except Exception:
+            except Exception as e:
+                if "timeout" in type(e).__name__.lower() or "timed out" in str(e).lower():
+                    busy = True
+                    _BUSY_UNTIL[model] = time.time() + BUSY_SECONDS
+                    continue  # too slow right now: try the lighter model
                 raise AIUnavailable("No connection to Gemini.")
             text = getattr(out, "output_text", None) or ""
             if not text.strip():
                 continue
             return (_parse_json(text) if schema else clean(text)), model
         if busy:
-            raise AIUnavailable("Gemini's free limit is busy right now.")
+            raise AIUnavailable("Gemini is busy or slow right now (free tier).")
         raise AIUnavailable("Gemini did not return an answer.")
 
     # -------------------------------------------------------------- Claude

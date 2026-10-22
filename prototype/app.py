@@ -17,7 +17,7 @@ from compass import bridge, content, cutoff, memo, urgency
 from compass.ai import Claude
 
 st.set_page_config(page_title="Speed Compass", page_icon=":material/explore:", layout="wide",
-                   initial_sidebar_state="expanded")
+                   initial_sidebar_state="auto")
 
 INK, INK2, MUTED, LINE, AXIS = "#0f172a", "#475569", "#94a3b8", "#e2e8f0", "#cbd5e1"
 VIOLET, CORAL, GOOD, BAD = "#6d3fd1", "#e11d48", "#12823b", "#c2334d"
@@ -54,7 +54,8 @@ html, body, .stApp, .stMarkdown, p, li, label, input, textarea, button, [data-te
 .sc-title { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:700; font-size:58px; line-height:1;
   margin:6px 0 8px; letter-spacing:.01em; }
 .sc-tag { font-size:16px; color:rgba(255,255,255,.9); max-width:640px; line-height:1.5; }
-.sc-chips { display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+.sc-mast-top > div:first-child { flex:1 1 420px; min-width:0; }
+.sc-chips { display:flex; flex-direction:column; gap:8px; align-items:flex-end; flex:none; }
 .sc-chip { display:inline-flex; align-items:center; gap:8px; background:rgba(255,255,255,.15);
   border:1px solid rgba(255,255,255,.28); color:#fff; padding:6px 13px; border-radius:999px; font-size:13px;
   white-space:nowrap; }
@@ -183,6 +184,52 @@ html, body, .stApp, .stMarkdown, p, li, label, input, textarea, button, [data-te
 .sc-foot { margin-top:26px; padding:14px 18px; border-radius:14px; background:#fff; border:1px solid #e6eaf3;
   font-size:12px; color:var(--ink2); }
 [dir="rtl"] { font-family:'IBM Plex Sans Arabic','Segoe UI',sans-serif; }
+
+/* ---------- AI badges and the walkthrough ---------- */
+.sc-ai { display:inline-flex; align-items:center; gap:5px; font-family:'IBM Plex Sans',sans-serif; font-size:11px;
+  font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:3px 9px; border-radius:999px;
+  vertical-align:middle; white-space:nowrap; }
+.sc-ai.on { background:linear-gradient(110deg,#f43f5e,#f97316); color:#fff; }
+.sc-ai.off { background:#e6f0fd; color:#1d5fbf; }
+.sc-aiwhy { font-size:12.5px; color:#7c2d12; background:#fff4ec; border:1px solid #fbd5bd; border-radius:10px;
+  padding:7px 10px; margin:2px 0 10px; line-height:1.45; }
+.sc-guide { display:flex; flex-direction:column; gap:9px; }
+.sc-step { display:flex; gap:11px; align-items:flex-start; font-size:14px; color:var(--ink); line-height:1.45; }
+.sc-step .n { flex:none; width:24px; height:24px; border-radius:50%; background:var(--dusk); color:#fff;
+  font-size:12.5px; font-weight:700; display:flex; align-items:center; justify-content:center; margin-top:1px; }
+.sc-step .d { color:var(--ink2); font-size:13px; }
+.sc-tw { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.sc-tw .sc-t { min-width:560px; }
+
+/* ---------- phones ---------- */
+@media (max-width:640px) {
+  .block-container { padding-left:.8rem; padding-right:.8rem; padding-top:3.6rem; }
+  .sc-mast { padding:18px 16px 14px; border-radius:16px; }
+  .sc-title { font-size:38px !important; }
+  .sc-tag { font-size:14.5px; }
+  .sc-chips { flex-direction:row; flex-wrap:wrap; gap:6px; }
+  .sc-chip { font-size:12px; padding:5px 10px; white-space:normal; }
+  .sc-legend { font-size:12px; gap:4px 12px; }
+  [role="tablist"] { flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  [role="tablist"]::-webkit-scrollbar { display:none; }
+  [data-testid="stTab"] { padding:7px 13px !important; flex:none; }
+  [data-testid="stTab"] p { font-size:13.5px !important; }
+  .sc-kpis { grid-template-columns:1fr 1fr; gap:9px; }
+  .sc-kpi { padding:10px 12px 11px; }
+  .sc-kpi .val { font-size:25px; white-space:normal; }
+  .sc-kpi .sub { font-size:11.5px; }
+  .sc-h { font-size:22px; }
+  .sc-alt { flex-wrap:wrap; }
+  .sc-alt .r { font-size:24px; }
+  .sc-zone-h .name { white-space:normal; }
+}
+.sc-swipe { display:none; font-size:11.5px; color:var(--muted); }
+@media (max-width:760px) {
+  .st-key-heatwrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .st-key-heatwrap > [data-testid="stElementContainer"] { min-width:720px; }
+  .sc-swipe { display:block; position:sticky; left:0; }
+}
+@media (max-width:380px) { .sc-kpis { grid-template-columns:1fr; } }
 </style>
 """
 
@@ -297,9 +344,23 @@ def side_h(text, color):
                 unsafe_allow_html=True)
 
 
-def section(title, sub=None):
-    st.markdown(f'<div class="sc-h">{title}</div>' + (f'<div class="sc-sub">{sub}</div>' if sub else ""),
+def section(title, sub=None, ai=None):
+    """ai=True marks a feature that calls the language model; ai=False marks plain model maths."""
+    badge = ("" if ai is None else '<span class="sc-ai on">&#10022; Uses AI</span>' if ai else
+             '<span class="sc-ai off">No AI: model maths</span>')
+    st.markdown(f'<div class="sc-h">{title}{badge}</div>' + (f'<div class="sc-sub">{sub}</div>' if sub else ""),
                 unsafe_allow_html=True)
+
+
+def working(ai_text, offline_text):
+    """Spinner that says when the AI is being asked and how long it may take."""
+    if claude.configured():
+        return st.spinner(f"{ai_text} (usually 3 to 15 seconds; offline rules answer if it is busy)")
+    return st.spinner(offline_text)
+
+
+def ai_why(text):
+    st.markdown(f'<div class="sc-aiwhy">{text}</div>', unsafe_allow_html=True)
 
 
 def card(name):
@@ -465,6 +526,73 @@ st.markdown(f"""
   </div>
 </div>""", unsafe_allow_html=True)
 
+# ------------------------------------------------------------------ walkthrough
+GUIDE = [
+    ("Plan", "Start here. Each zone card shows the promise Speed Compass sets (Today, Tomorrow or no change), what "
+             "it costs and the extra sales it brings. The tiles below give the UAE totals."),
+    ("Assumptions", "Move any slider in the sidebar and every number updates. On a phone, tap the &raquo; arrow at "
+                    "the top left to open it."),
+    ("12 PM test", "Press Run. It simulates the cut-off test and shows it finds the planted answer. Then press "
+                   "Use these results to feed the measured rates into the plan."),
+    ("Urgency tagger &#10022; AI", "Type or pick a search in English or Arabic. The AI labels it urgent or planned. "
+                                   "Tag all 30 to estimate the urgent share of orders."),
+    ("Rival watch", "Pick a rival move, such as noon Minutes opening in a new emirate. The table shows whether "
+                    "matching it pays."),
+    ("Memo and questions &#10022; AI", "The AI writes this month's memo from the plan, and answers what-if "
+                                       "questions such as \"What if fuel costs rise 20% in Al Ain?\""),
+]
+AI_USES = (
+    "<b>AI is used in two tabs only, for language jobs. It never sets a number.</b>"
+    "<ul style='margin:6px 0 0 18px;padding:0'>"
+    "<li><b>Urgency tagger:</b> reads a shopper's search in English or Arabic and labels it urgent (needed today) or "
+    "planned, with a reason. Purpose: estimate the share of urgent orders, which decides how far each zone's "
+    "ladder can climb.</li>"
+    "<li><b>Memo and questions:</b> turns a question in plain words into model inputs (for example \"fuel up 20% in "
+    "Al Ain\" becomes delivery cost +20% in Al Ain). The model reruns the plan, and the AI explains what moved. It "
+    "also writes the monthly memo from the plan's numbers.</li>"
+    "<li><b>Plan, 12 PM test and Rival watch</b> use no AI: they run the same model code as the submitted "
+    "documents.</li></ul>"
+    "<div style='margin-top:6px'>{engine}</div>")
+
+
+def ai_uses():
+    if claude.configured():
+        whose = "this app's own key" if claude.source == "server" else "your key"
+        engine = (f"Model: {_ai_name}, through {whose}. A reply takes about 3 to 15 seconds. If it is busy, the app "
+                  f"stops waiting after about 25 seconds and answers with built-in offline rules, so nothing gets "
+                  f"stuck.")
+    else:
+        engine = ("No AI key is set on this copy, so built-in offline rules do these jobs. Add a key in the sidebar "
+                  "to switch the AI on.")
+    return AI_USES.format(engine=engine)
+
+
+def guide_html():
+    steps = "".join(f'<div class="sc-step"><span class="n">{i}</span><div><b>{t}</b><br><span class="d">{d}</span>'
+                    f'</div></div>' for i, (t, d) in enumerate(GUIDE, 1))
+    return f'<div class="sc-guide">{steps}</div>'
+
+
+@st.dialog("Welcome to Speed Compass", width="large")
+def welcome():
+    st.markdown('<div class="sc-sub" style="font-size:14px">It decides, zone by zone, where faster delivery pays. '
+                'Six things to try, about two minutes in all:</div>', unsafe_allow_html=True)
+    st.markdown(guide_html(), unsafe_allow_html=True)
+    st.markdown(f'<div class="sc-aiwhy" style="margin-top:12px">{ai_uses()}</div>', unsafe_allow_html=True)
+    if st.button("Got it, show me the plan", type="primary", width="stretch"):
+        st.rerun()
+
+
+if not ss.get("welcomed"):
+    ss.welcomed = True
+    welcome()
+
+g1, g2 = st.columns(2)
+with g1.expander("How to use this app", icon=":material/help:"):
+    st.markdown(guide_html(), unsafe_allow_html=True)
+with g2.expander("Where the AI is used, and why", icon=":material/auto_awesome:"):
+    st.markdown(f'<div style="font-size:13.5px;line-height:1.5">{ai_uses()}</div>', unsafe_allow_html=True)
+
 tab_plan, tab_test, tab_tag, tab_rival, tab_memo = st.tabs(
     [":material/route: Plan", ":material/schedule: 12 PM test", ":material/bolt: Urgency tagger",
      ":material/radar: Rival watch", ":material/description: Memo and questions"])
@@ -614,7 +742,7 @@ with tab_plan:
     with left:
         with card("ladder"):
             section("The ladder", "Each line is one zone. Funding climbs while the next step stays in the green, "
-                                  "then stops where urgent orders run out.")
+                                  "then stops where urgent orders run out.", ai=False)
             st.plotly_chart(ladder_figure(), width="stretch", config={"displayModeBar": False})
     with right:
         with card("alts"):
@@ -639,7 +767,9 @@ with tab_plan:
         section("What would change the plan", "Same-day target by zone as the share of urgent shoppers lost "
                                               "without same-day moves. Green means same-day pays; rose means hold. "
                                               "This is the number the 12 PM test measures.")
-        st.plotly_chart(breakpoint_figure(), width="stretch", config={"displayModeBar": False})
+        with st.container(key="heatwrap"):
+            st.plotly_chart(breakpoint_figure(), width="stretch", config={"displayModeBar": False})
+            st.markdown('<div class="sc-swipe">Swipe sideways to see every rate.</div>', unsafe_allow_html=True)
 
     with st.expander("Zone details"):
         detail = pd.DataFrame([{
@@ -662,7 +792,7 @@ with tab_plan:
 
 
 # ------------------------------------------------------------------ 12 PM test tab
-def test_figure(d, title):
+def test_figure(d):
     m = cutoff.MINUTES
     p = cutoff.series_for_plot(d)
     labels = [f"{11 + (60 + x) // 60}:{(60 + x) % 60:02d}" for x in m]
@@ -681,11 +811,11 @@ def test_figure(d, title):
                        xanchor="left", xshift=5, font=dict(size=12, color=CORAL))
     fig.add_annotation(x=-cutoff.DONUT / 2, y=0.02, yref="paper", text="rush, left out", showarrow=False,
                        font=dict(size=11, color="#8a5a00"))
-    return base_layout(fig, 380, title=dict(text=title, font=dict(size=14)), margin=dict(l=8, r=8, t=44, b=8),
+    return base_layout(fig, 380, margin=dict(l=8, r=8, t=24, b=8),
                        legend=dict(orientation="h", yanchor="bottom", y=-0.32, x=0),
-                       xaxis=dict(tickmode="array", tickvals=list(range(-60, 61, 15)),
-                                  ticktext=["11:00", "11:15", "11:30", "11:45", "12:00", "12:15", "12:30", "12:45",
-                                            "13:00"], showgrid=False, showline=True, linecolor=AXIS),
+                       xaxis=dict(tickmode="array", tickvals=list(range(-60, 61, 30)), tickangle=0,
+                                  ticktext=["11:00", "11:30", "12:00", "12:30", "13:00"], showgrid=False,
+                                  showline=True, linecolor=AXIS),
                        yaxis=dict(title="Share of page views that bought", ticksuffix="%",
                                   gridcolor="rgba(15,23,42,.06)"))
 
@@ -697,7 +827,7 @@ with tab_test:
                 'before and just after are alike, so the drop in buying at 12:00, net of the same moment for items '
                 'whose promise does not change, shows how many sales "Today" wins. Buyers who come back within seven '
                 'days are delayed, not lost, and are removed. This tab runs the test on simulated data with a planted '
-                'answer.')
+                'answer.', ai=False)
         c1, c2, c3 = st.columns([2.2, 1.2, 0.8])
         world = c1.radio("Simulated world", list(cutoff.WORLDS), horizontal=True, key="t_world")
         days = c2.slider("Days of order history", 5, 40, 20, key="t_days")
@@ -720,9 +850,9 @@ with tab_test:
                          f'{LABEL[n]}</td><td class="n"><b>{v["measured"] * 100:.1f}%</b></td>'
                          f'<td class="n">{v["lo"] * 100:.1f}% to {v["hi"] * 100:.1f}%</td>'
                          f'<td class="n">{now * 100:.1f}%</td><td>{src}</td></tr>')
-            st.markdown(f'<table class="sc-t"><tr><th>Zone</th><th class="n">Measured lost-sale rate</th>'
+            st.markdown(f'<div class="sc-tw"><table class="sc-t"><tr><th>Zone</th><th class="n">Measured lost-sale rate</th>'
                         f'<th class="n">90% range</th><th class="n">Plan uses now</th><th>Source now</th></tr>'
-                        f'{rows}</table>', unsafe_allow_html=True)
+                        f'{rows}</table></div>', unsafe_allow_html=True)
             st.write("")
             st.button("Use these results in the plan", type="primary", on_click=use_measured, args=(zones,))
         with card("test_chart"):
@@ -730,10 +860,10 @@ with tab_test:
             pick_zone = g1.selectbox("Zone", bridge.ZONE_NAMES, format_func=LABEL.get, key="t_zone")
             pick_group = g2.selectbox("Item group", [g["name"] for g in cutoff.ITEM_GROUPS], key="t_group")
             cell = next(c for c in cells if c["zone"] == pick_zone and c["group"] == pick_group)
-            st.plotly_chart(test_figure(series[f"{pick_zone}|{pick_group}"],
-                                        f"{LABEL[pick_zone]}, {pick_group}: measured lost-sale rate "
-                                        f"{cell['measured'] * 100:.1f}% (90% range {cell['lo'] * 100:.1f}% to "
-                                        f"{cell['hi'] * 100:.1f}%)"),
+            st.markdown(f"**{LABEL[pick_zone]}, {pick_group}:** measured lost-sale rate "
+                        f"{cell['measured'] * 100:.1f}% (90% range {cell['lo'] * 100:.1f}% to "
+                        f"{cell['hi'] * 100:.1f}%)")
+            st.plotly_chart(test_figure(series[f"{pick_zone}|{pick_group}"]),
                             width="stretch", config={"displayModeBar": False})
         with st.expander("Check the method against the planted answer"):
             st.caption("In real use the true rate is unknown. Here the simulation planted it, so you can see the test "
@@ -776,7 +906,9 @@ with tab_tag:
     with a:
         with card("tag_one"):
             section("Tag one search", "Speed Compass reads a search in English or Arabic and decides whether the "
-                                      "shopper needs it today.")
+                                      "shopper needs it today.", ai=True)
+            ai_why("The AI reads the words, including Arabic and mixed searches, and judges urgency with a reason. "
+                   "Without AI, keyword rules do a rougher job.")
             st.text_input("Search text", key="u_query", placeholder="laptop charger tonight")
             ex = st.columns(2)
             for i, q in enumerate(content.EXAMPLE_SEARCHES):
@@ -784,7 +916,7 @@ with tab_tag:
             if st.button("Tag this search", type="primary"):
                 q = (ss.get("u_query") or "").strip()
                 if q:
-                    with st.spinner("Tagging"):
+                    with working(f"Asking {_ai_name} to tag this search", "Tagging"):
                         ss.u_result = urgency.tag(claude, q)
                 else:
                     st.warning("Type a search first, or pick an example.")
@@ -796,9 +928,9 @@ with tab_tag:
     with b:
         with card("tag_batch"):
             section("Tag an hour of searches", "30 searches standing in for one hour in Dubai (illustrative). The "
-                                               "urgent share decides how far the ladder can climb.")
+                                               "urgent share decides how far the ladder can climb.", ai=True)
             if st.button("Tag all 30 searches"):
-                with st.spinner("Tagging 30 searches"):
+                with working(f"Asking {_ai_name} to tag 30 searches", "Tagging 30 searches"):
                     ss.u_batch = urgency.tag_batch(claude, content.SAMPLE_SEARCHES)
             if ss.get("u_batch"):
                 res, note = ss.u_batch
@@ -826,7 +958,7 @@ with tab_tag:
 with tab_rival:
     with card("rival_controls"):
         section("Rival watch", "A faster rival raises how many urgent shoppers we lose without same-day. Speed Compass "
-                               "matches a rival only when the step still clears the rule.")
+                               "matches a rival only when the step still clears the rule.", ai=False)
         st.markdown("**Where a rival offers same-day or faster**")
         cols = st.columns(5)
         for col, n in zip(cols, bridge.ZONE_NAMES):
@@ -854,16 +986,16 @@ with tab_rival:
                      f'<td class="n">{"<b>" if moved else ""}{z["sd_first_ratio"]:.2f}{"</b>" if moved else ""}</td>'
                      f'<td><span class="sc-c {"ok" if match else "no"}">'
                      f'{"&#10003; Yes, it pays" if match else "&#10007; No, it does not pay"}</span></td></tr>')
-        st.markdown(f'<table class="sc-t"><tr><th>Zone</th><th>Rival</th><th class="n">Lost-sale rate</th>'
+        st.markdown(f'<div class="sc-tw"><table class="sc-t"><tr><th>Zone</th><th>Rival</th><th class="n">Lost-sale rate</th>'
                     f'<th class="n">Before the move</th><th class="n">After</th><th>Match the rival?</th></tr>'
-                    f'{rows}</table>', unsafe_allow_html=True)
+                    f'{rows}</table></div>', unsafe_allow_html=True)
     with card("rival_promises"):
         section("What rivals promise today", "From Appendix F of the supporting document.")
         rows = "".join(f'<tr><td><b>{esc(s)}</b></td><td><span class="sc-c {kind}">{esc(badge)}</span></td>'
                        f'<td>{esc(promise)}</td><td>{esc(cov)}</td><td>{esc(src)}</td></tr>'
                        for s, badge, kind, promise, cov, src in content.RIVAL_PROMISES)
-        st.markdown(f'<table class="sc-t"><tr><th>Service</th><th>Speed</th><th>Promise</th><th>Coverage</th>'
-                    f'<th>Source</th></tr>{rows}</table>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sc-tw"><table class="sc-t"><tr><th>Service</th><th>Speed</th><th>Promise</th><th>Coverage</th>'
+                    f'<th>Source</th></tr>{rows}</table></div>', unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------ memo tab
@@ -871,9 +1003,10 @@ with tab_memo:
     a, b = st.columns([1.1, 1], gap="medium")
     with a:
         with card("memo"):
-            section("This month's memo", "Written from the current plan. Change any assumption and write it again.")
+            section("This month's memo", "Written from the current plan. Change any assumption and write it again.", ai=True)
+            ai_why("The numbers come from the model. The AI only writes them up as a short memo for leaders.")
             if st.button("Write this month's memo", type="primary"):
-                with st.spinner("Writing the memo"):
+                with working(f"{_ai_name} is writing the memo", "Writing the memo"):
                     ss.memo = dict(out=memo.memo(claude, R, S), key=key_of(S))
             if ss.get("memo"):
                 text, engine, note = ss.memo["out"]
@@ -887,14 +1020,17 @@ with tab_memo:
     with b:
         with card("ask"):
             section("Ask Speed Compass", "Ask a what-if question in English or Arabic. It reruns the plan and "
-                                         "explains what moves.")
+                                         "explains what moves.", ai=True)
+            ai_why("The AI turns your question into model inputs, the model reruns the plan, then the AI explains "
+                   "the before and after numbers.")
             st.text_input("Question", key="q_text", placeholder="What happens in Al Ain if fuel costs rise 20%?")
             for q in content.EXAMPLE_QUESTIONS:
                 st.button(q, key=f"q_{q}", on_click=set_text, args=("q_text", q))
             if st.button("Ask", type="primary"):
                 q = (ss.get("q_text") or "").strip()
                 if q:
-                    with st.spinner("Rerunning the plan"):
+                    with working(f"{_ai_name} is reading the question, then the plan reruns",
+                                 "Rerunning the plan"):
                         ss.qa = dict(q=q, out=memo.answer(claude, S, q))
                 else:
                     st.warning("Type a question first, or pick an example.")
