@@ -503,6 +503,10 @@ if claude.configured():
                 st.success(f"{claude.label} answered in {time.time() - t0:.1f} seconds.")
             except AIUnavailable as e:
                 st.warning(f"{e} ({time.time() - t0:.1f} seconds). The app is using offline rules for now.")
+        if claude.provider == "gemini" and st.query_params.get("diag") == "1":
+            from google import genai as _g
+            st.caption(", ".join(sorted(m.name.split("/")[-1] for m in _g.Client(api_key=claude.api_key).models.list()
+                                        if "flash" in m.name or "pro" in m.name)))
         if claude.provider == "gemini" and LAST_TRACE:
             st.caption("Last request: " + "; ".join(f"{m}: {what}, {sec:.1f} s" for m, what, sec in LAST_TRACE))
 S = settings()
